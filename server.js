@@ -704,6 +704,7 @@ app.post('/api/consultar-regras-desconto', async (req, res) => {
         request.input('PED_COD', sql.Int, parseInt(PED_COD));
 
         const query = `SELECT cad_dpd.PED_COD, 
+                       cad_tdp.TDP_COD,
                        cad_tdp.TDP_DES, 
 	               cad_dpd.GRU_COD,
 	               cad_dpd.DE,
