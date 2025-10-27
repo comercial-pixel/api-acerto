@@ -287,8 +287,6 @@ app.post('/api/atualizar-status-itens-ipe', async (req, res) => {
 
 
 
-
-
 app.post('/api/registrar-recebimentos', async (req, res) => {
     console.log('API Recebida: /api/registrar-recebimentos');
     try {
@@ -394,6 +392,129 @@ app.post('/api/registrar-recebimentos', async (req, res) => {
 });
 
 
+
+// ===== ENDPOINT: FINALIZAR ACERTO =====
+app.post('/api/finalizar-acerto', async (req, res) => {
+    console.log('🎯 ===== RECEBIDO: FINALIZAR ACERTO =====');
+    console.log('📅 Timestamp:', new Date().toISOString());
+    
+    try {
+        const { dadosAcerto } = req.body;
+
+        if (!dadosAcerto) {
+            console.error('❌ dadosAcerto não fornecido');
+            return res.status(400).json({ 
+                error: 'Dados do acerto não fornecidos',
+                success: false 
+            });
+        }
+
+        console.log('📦 Dados recebidos do Base44:');
+        console.log('   - cad_fcs:', dadosAcerto.cad_fcs ? 'Sim' : 'Não');
+        console.log('   - fcs_res:', dadosAcerto.fcs_res ? dadosAcerto.fcs_res.length + ' tipos' : 'Não');
+        console.log('   - ItensPedidoProximoMes:', dadosAcerto.ItensPedidoProximoMes ? dadosAcerto.ItensPedidoProximoMes.length + ' itens' : 'Não');
+        console.log('   - cad_rda:', dadosAcerto.cad_rda ? 'Sim' : 'Não');
+        console.log('   - USU_LOG:', dadosAcerto.USU_LOG);
+
+        // Construir o JSON para a SP
+        // A SP espera um JSON com a estrutura exata
+        const jsonParaSP = JSON.stringify(dadosAcerto);
+
+        console.log('📄 JSON que será enviado para a SP:');
+        console.log(jsonParaSP);
+
+        const pool = await sql.connect(dbConfig);
+        
+        console.log('🔄 Executando sp_AppAcerto...');
+        
+        const result = await pool.request()
+            .input('json', sql.NVarChar(sql.MAX), jsonParaSP)
+            .execute('sp_AppAcerto');
+
+        console.log('📊 Resultado da SP:', JSON.stringify(result, null, 2));
+
+        // A SP retorna um recordset com FCS_COD e MSG_RETORNO
+        if (result.recordset && result.recordset.length > 0) {
+            const { FCS_COD, MSG_RETORNO } = result.recordset[0];
+            
+            console.log('✅ SP executada com sucesso');
+            console.log('   - FCS_COD:', FCS_COD);
+            console.log('   - MSG_RETORNO:', MSG_RETORNO);
+
+            if (MSG_RETORNO === 'SUCESSO' && FCS_COD > 0) {
+                console.log('🎉 Acerto finalizado com sucesso! FCS_COD:', FCS_COD);
+                console.log('🏁 ===== FIM: FINALIZAR ACERTO (sucesso) =====');
+                
+                return res.json({
+                    success: true,
+                    FCS_COD: FCS_COD,
+                    message: 'Acerto finalizado com sucesso',
+                    detalhes: {
+                        msg_retorno: MSG_RETORNO,
+                        fcs_cod: FCS_COD
+                    }
+                });
+            } else {
+                console.error('❌ SP retornou erro. MSG_RETORNO:', MSG_RETORNO);
+                
+                // Buscar detalhes do erro na tabela de log
+                let errorDetails = 'Erro ao finalizar acerto';
+                try {
+                    const errorLog = await pool.request()
+                        .query(`
+                            SELECT TOP 1 
+                                ErrorNumber,
+                                ErrorMessage,
+                                ErrorProcedure,
+                                ErrorLine
+                            FROM log_app_error 
+                            ORDER BY id DESC
+                        `);
+                    
+                    if (errorLog.recordset && errorLog.recordset.length > 0) {
+                        const log = errorLog.recordset[0];
+                        errorDetails = `Erro ${log.ErrorNumber} na procedure ${log.ErrorProcedure} linha ${log.ErrorLine}: ${log.ErrorMessage}`;
+                        console.error('📝 Detalhes do erro no log:', errorDetails);
+                    }
+                } catch (logError) {
+                    console.error('⚠️ Não foi possível buscar log de erro:', logError.message);
+                }
+
+                console.log('🏁 ===== FIM: FINALIZAR ACERTO (erro da SP) =====');
+                
+                return res.status(500).json({
+                    success: false,
+                    error: 'Erro ao executar finalização do acerto',
+                    details: errorDetails,
+                    sqlError: MSG_RETORNO
+                });
+            }
+        } else {
+            console.error('❌ SP não retornou recordset');
+            console.log('🏁 ===== FIM: FINALIZAR ACERTO (sem retorno) =====');
+            
+            return res.status(500).json({
+                success: false,
+                error: 'Stored Procedure não retornou resultado',
+                details: 'A execução da SP foi concluída mas nenhum resultado foi retornado'
+            });
+        }
+
+    } catch (error) {
+        console.error('💥 ERRO ao finalizar acerto:', error);
+        console.error('📛 Nome:', error.name);
+        console.error('📝 Mensagem:', error.message);
+        console.error('📚 Stack:', error.stack);
+        console.log('🏁 ===== FIM: FINALIZAR ACERTO (erro) =====');
+
+        return res.status(500).json({
+            success: false,
+            error: 'Erro ao processar finalização do acerto',
+            details: error.message,
+            sqlError: error.code || 'UNKNOWN'
+        });
+    }
+});
 
 
 
