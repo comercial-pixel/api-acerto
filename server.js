@@ -399,12 +399,19 @@ app.post('/api/finalizar-acerto', async (req, res) => {
     console.log('📅 Timestamp:', new Date().toISOString());
     
     try {
-        const { dadosAcerto } = req.body;
+        // A MUDANÇA PRINCIPAL É NESTA LINHA:
+        // Anteriormente: const dadosAcerto = req.body;
+        // Agora: extraímos 'dadosAcerto' da propriedade 'dadosAcerto' dentro do corpo da requisição
+        const { dadosAcerto } = req.body; // <--- MUDANÇA AQUI: Extraindo a propriedade 'dadosAcerto'
+
+        // Log para confirmar que a desestruturação funcionou e o objeto dadosAcerto agora está acessível
+        console.log('📦 Dados recebidos do Base44 (após desestruturação):', JSON.stringify(dadosAcerto, null, 2));
+
 
         if (!dadosAcerto) {
-            console.error('❌ dadosAcerto não fornecido');
+            console.error('❌ dadosAcerto não fornecido após desestruturação');
             return res.status(400).json({ 
-                error: 'Dados do acerto não fornecidos',
+                error: 'Dados do acerto não fornecidos (verificar estrutura do body)', // Mensagem um pouco mais específica
                 success: false 
             });
         }
@@ -414,7 +421,7 @@ app.post('/api/finalizar-acerto', async (req, res) => {
         console.log('   - fcs_res:', dadosAcerto.fcs_res ? dadosAcerto.fcs_res.length + ' tipos' : 'Não');
         console.log('   - ItensPedidoProximoMes:', dadosAcerto.ItensPedidoProximoMes ? dadosAcerto.ItensPedidoProximoMes.length + ' itens' : 'Não');
         console.log('   - cad_rda:', dadosAcerto.cad_rda ? 'Sim' : 'Não');
-        console.log('   - USU_LOG:', dadosAcerto.USU_LOG);
+        console.log('   - USU_LOG:', dadosAcerto.USU_LOG); // Note: USU_LOG não apareceu nos logs do Base44 que você enviou antes. Verifique se ele é esperado.
 
         // Construir o JSON para a SP
         // A SP espera um JSON com a estrutura exata
@@ -423,7 +430,8 @@ app.post('/api/finalizar-acerto', async (req, res) => {
         console.log('📄 JSON que será enviado para a SP:');
         console.log(jsonParaSP);
 
-        const pool = await sql.connect(dbConfig);
+        // Assumindo que 'sql' e 'dbConfig' estão definidos globalmente ou importados
+        const pool = await sql.connect(dbConfig); 
         
         console.log('🔄 Executando sp_AppAcerto...');
         
@@ -460,6 +468,7 @@ app.post('/api/finalizar-acerto', async (req, res) => {
                 // Buscar detalhes do erro na tabela de log
                 let errorDetails = 'Erro ao finalizar acerto';
                 try {
+                    // Assumindo 'sql' está definido
                     const errorLog = await pool.request()
                         .query(`
                             SELECT TOP 1 
